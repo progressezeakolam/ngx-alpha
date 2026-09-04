@@ -178,12 +178,9 @@ else:
         st.write(f"Columns: {list(stocks_df.columns)}")
         st.dataframe(stocks_df.head(10))
 
-# DEBUG: Show actual columns
-st.write(f"**DEBUG** - DataFrame shape: {stocks_df.shape}, Columns: {list(stocks_df.columns)}")
-
 # Ensure ticker column exists
 if 'ticker' not in stocks_df.columns:
-    st.error(f"❌ Fatal Error: 'ticker' column not found in data. Available columns: {list(stocks_df.columns)}")
+    st.error(f"❌ Fatal Error: 'ticker' column not found in data.\nAvailable columns: {list(stocks_df.columns)}\nDataFrame head:\n{stocks_df.head()}")
     st.stop()
 
 # Compute NGX Score + AI Prob (same logic as v2)
