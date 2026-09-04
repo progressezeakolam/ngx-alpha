@@ -96,7 +96,7 @@ def fetch_live_stocks(api_key):
                 except Exception as e:
                     continue
     
-    # Fallback: return mock with live Sept 3 data if API fails (so dashboard still works)
+    # Fallback: return None to trigger fallback data
     return None, None, None
 
 @st.cache_data(ttl=1200)
@@ -126,6 +126,24 @@ def fetch_market_overview(api_key):
                     continue
     return None, None
 
+def get_fallback_stocks():
+    """Return fallback Sept 3 snapshot"""
+    return pd.DataFrame([
+        {"ticker": "SEPLAT", "price": 13552.60, "change_pct": 10.00, "volume": 194000, "value": 2630000000, "market_cap": 7.39e12, "sector": "Oil & Gas", "status": "LIMIT UP"},
+        {"ticker": "GTCO", "price": 128.70, "change_pct": -0.23, "volume": 34200000, "value": 4290000000, "market_cap": 4.71e12, "sector": "Financial Services", "status": "FTSE -0.23%"},
+        {"ticker": "ZENITHBANK", "price": 121.38, "change_pct": 0.31, "volume": 17890000, "value": 2170000000, "market_cap": 4.97e12, "sector": "Financial Services", "status": "+0.31%"},
+        {"ticker": "MTNN", "price": 774.93, "change_pct": 0.12, "volume": 1813893, "value": 1405000000, "market_cap": 16.25e12, "sector": "Telecoms", "status": "+0.12% FTSE"},
+        {"ticker": "FIRSTHOLDCO", "price": 145.04, "change_pct": 0.03, "volume": 7492144, "value": 1086000000, "market_cap": 6.45e12, "sector": "Financial Services", "status": "+0.03%"},
+        {"ticker": "ARADEL", "price": 1292.82, "change_pct": -5.84, "volume": 310000, "value": 400000000, "market_cap": 5.97e12, "sector": "Oil & Gas", "status": "-5.84%"},
+        {"ticker": "UBA", "price": 45.90, "change_pct": -1.08, "volume": 113260000, "value": 5230000000, "market_cap": 2.03e12, "sector": "Financial Services", "status": "VOL LEADER 26.1%"},
+        {"ticker": "ACCESSCORP", "price": 29.50, "change_pct": -2.44, "volume": 27928758, "value": 823000000, "market_cap": 1.57e12, "sector": "Financial Services", "status": "VOL 5.73%"},
+        {"ticker": "AIRTELAFRI", "price": 6300.00, "change_pct": 0.0, "volume": 15000, "value": 94500000, "market_cap": 23.68e12, "sector": "Telecoms", "status": "UNCH"},
+        {"ticker": "BUAFOODS", "price": 760.60, "change_pct": 0.0, "volume": 64071, "value": 48700000, "market_cap": 13.69e12, "sector": "Consumer Goods", "status": "UNCH"},
+        {"ticker": "BUACEMENT", "price": 316.00, "change_pct": 0.0, "volume": 180000, "value": 56800000, "market_cap": 10.70e12, "sector": "Industrial Goods", "status": "UNCH"},
+        {"ticker": "DANGCEM", "price": 1034.00, "change_pct": 0.0, "volume": 1306366, "value": 1350000000, "market_cap": 17.45e12, "sector": "Industrial Goods", "status": "UNCH"},
+        {"ticker": "STANBIC", "price": 156.10, "change_pct": -1.79, "volume": 6359700, "value": 992000000, "market_cap": 2.48e12, "sector": "Financial Services", "status": "-1.79%"},
+    ])
+
 # --- UI ---
 st.title("📈 NGX Alpha Engine v3 — LIVE via KoboTerminal / NGX Pulse API")
 st.caption(f"API Key: {API_KEY[:10]}...{API_KEY[-4:]} | Updates every 20 min 9am-4pm WAT | T+1 Settlement | 147 tickers")
@@ -145,33 +163,23 @@ with st.spinner("Pulling live 147 tickers from NGX Pulse / KoboTerminal..."):
     stocks_df, success_url, status_code = fetch_live_stocks(API_KEY)
     market_overview, overview_url = fetch_market_overview(API_KEY)
 
-# Status banner
-if stocks_df is not None and not stocks_df.empty:
+# Use fallback if API fails
+if stocks_df is None or stocks_df.empty:
+    st.warning("🟡 API endpoint not reachable from this sandbox (no internet) — showing corrected Sept 3 live snapshot from web research. On your local machine with internet, this will show LIVE 147 tickers.")
+    stocks_df = get_fallback_stocks()
+    success_url = "Fallback Sept 3 Proshare verified"
+    status_code = 200
+else:
     st.success(f"🟢 LIVE — Pulled {len(stocks_df)} tickers from {success_url} (HTTP {status_code}) | Key valid")
     with st.expander("Debug — API Response Shape", expanded=False):
         st.write(f"URL: {success_url}")
         st.write(f"Columns: {list(stocks_df.columns)}")
         st.dataframe(stocks_df.head(10))
-else:
-    st.warning("🟡 API endpoint not reachable from this sandbox (no internet) — showing corrected Sept 3 live snapshot from web research. On your local machine with internet, this will show LIVE 147 tickers.")
-    # Use corrected Sept 3 snapshot from earlier research
-    corrected_data = [
-        {"ticker": "SEPLAT", "price": 13552.60, "change_pct": 10.00, "volume": 194000, "value": 2630000000, "market_cap": 7.39e12, "sector": "Oil & Gas", "status": "LIMIT UP"},
-        {"ticker": "GTCO", "price": 128.70, "change_pct": -0.23, "volume": 34200000, "value": 4290000000, "market_cap": 4.71e12, "sector": "Financial Services", "status": "FTSE -0.23%"},
-        {"ticker": "ZENITHBANK", "price": 121.38, "change_pct": 0.31, "volume": 17890000, "value": 2170000000, "market_cap": 4.97e12, "sector": "Financial Services", "status": "+0.31%"},
-        {"ticker": "MTNN", "price": 774.93, "change_pct": 0.12, "volume": 1813893, "value": 1405000000, "market_cap": 16.25e12, "sector": "Telecoms", "status": "+0.12% FTSE"},
-        {"ticker": "FIRSTHOLDCO", "price": 145.04, "change_pct": 0.03, "volume": 7492144, "value": 1086000000, "market_cap": 6.45e12, "sector": "Financial Services", "status": "+0.03%"},
-        {"ticker": "ARADEL", "price": 1292.82, "change_pct": -5.84, "volume": 310000, "value": 400000000, "market_cap": 5.97e12, "sector": "Oil & Gas", "status": "-5.84%"},
-        {"ticker": "UBA", "price": 45.90, "change_pct": -1.08, "volume": 113260000, "value": 5230000000, "market_cap": 2.03e12, "sector": "Financial Services", "status": "VOL LEADER 26.1%"},
-        {"ticker": "ACCESSCORP", "price": 29.50, "change_pct": -2.44, "volume": 27928758, "value": 823000000, "market_cap": 1.57e12, "sector": "Financial Services", "status": "VOL 5.73%"},
-        {"ticker": "AIRTELAFRI", "price": 6300.00, "change_pct": 0.0, "volume": 15000, "value": 94500000, "market_cap": 23.68e12, "sector": "Telecoms", "status": "UNCH"},
-        {"ticker": "BUAFOODS", "price": 760.60, "change_pct": 0.0, "volume": 64071, "value": 48700000, "market_cap": 13.69e12, "sector": "Consumer Goods", "status": "UNCH"},
-        {"ticker": "BUACEMENT", "price": 316.00, "change_pct": 0.0, "volume": 180000, "value": 56800000, "market_cap": 10.70e12, "sector": "Industrial Goods", "status": "UNCH"},
-        {"ticker": "DANGCEM", "price": 1034.00, "change_pct": 0.0, "volume": 1306366, "value": 1350000000, "market_cap": 17.45e12, "sector": "Industrial Goods", "status": "UNCH"},
-        {"ticker": "STANBIC", "price": 156.10, "change_pct": -1.79, "volume": 6359700, "value": 992000000, "market_cap": 2.48e12, "sector": "Financial Services", "status": "-1.79%"},
-    ]
-    stocks_df = pd.DataFrame(corrected_data)
-    success_url = "Fallback Sept 3 Proshare verified"
+
+# Ensure ticker column exists
+if 'ticker' not in stocks_df.columns:
+    st.error("❌ Fatal Error: 'ticker' column not found in data. Cannot proceed.")
+    st.stop()
 
 # Compute NGX Score + AI Prob (same logic as v2)
 if 'div_yield' not in stocks_df.columns:
@@ -191,11 +199,6 @@ if 'div_yield' not in stocks_df.columns:
         "DANGCEM": {"div_yield": 0.051, "pe": 15.2, "roe": 0.28, "de": 0.45, "earn_growth": 0.18, "adv_90d_m": 380, "mom_126": 0.12, "vol": 0.22},
         "STANBIC": {"div_yield": 0.065, "pe": 7.2, "roe": 0.30, "de": 0.14, "earn_growth": 0.26, "adv_90d_m": 650, "mom_126": 0.40, "vol": 0.30},
     }
-    
-    # Ensure 'ticker' column exists
-    if 'ticker' not in stocks_df.columns:
-        st.error("Error: 'ticker' column not found in stocks_df")
-        st.stop()
     
     for col in ['div_yield','pe','roe','de','earn_growth','adv_90d_m','mom_126','vol']:
         stocks_df[col] = stocks_df['ticker'].map(lambda t: fundamentals.get(t, {}).get(col, 0.05))
