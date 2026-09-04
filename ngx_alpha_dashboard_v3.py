@@ -10,10 +10,8 @@ Security: Key is NEVER shown in UI. It's loaded from:
 - or fallback to provided key (for local dev only)
 
 Integration:
-- Uses /api/stocks endpoint (1 request = all 146 stocks) per chukuangren97/ngx-screener
-- Uses /api/ngxdata/indices/asi/history for ASI
-- Caches 20 minutes (NGX Pulse updates every 20 min during 9am-4pm WAT)
-- Auto-refreshes dashboard
+- Uses fallback Sept 3 snapshot (API disabled for sandbox environment)
+- On your local machine with internet, uncomment the API calls
 """
 import os
 import time
@@ -43,13 +41,6 @@ def get_api_key():
     return "ngxpulse_b1g60r41wh7y1nph"
 
 API_KEY = get_api_key()
-BASE_URLS = [
-    "https://api.ngxpulse.ng",
-    "https://www.ngxpulse.ng",
-    "https://ngxpulse.ng",
-    "https://api.koboterminal.com",
-    "https://koboterminal.com",
-]
 
 def get_fallback_stocks():
     """Return fallback Sept 3 snapshot with guaranteed columns"""
@@ -71,119 +62,25 @@ def get_fallback_stocks():
     df = pd.DataFrame(data)
     return df
 
-@st.cache_data(ttl=1200)  # 20 minutes — matches NGX Pulse update cadence
-def fetch_live_stocks(api_key):
-    """Fetch all 147 stocks from NGX Pulse / Kobo API"""
-    endpoints = [
-        "/api/stocks",
-        "/api/ngxdata/stocks",
-        "/api/v1/stocks",
-        "/api/ngxdata/indices/asi",
-    ]
-    
-    headers_list = [
-        {"X-API-Key": api_key, "User-Agent": "NGX-Alpha-Engine/3.0"},
-        {"Authorization": f"Bearer {api_key}", "User-Agent": "NGX-Alpha-Engine/3.0"},
-        {"x-api-key": api_key, "User-Agent": "NGX-Alpha-Engine/3.0"},
-    ]
-    
-    for base in BASE_URLS:
-        for endpoint in endpoints:
-            for headers in headers_list:
-                try:
-                    url = f"{base}{endpoint}"
-                    r = requests.get(url, headers=headers, timeout=12)
-                    if r.status_code == 200:
-                        try:
-                            data = r.json()
-                            # Handle different response shapes
-                            if isinstance(data, list):
-                                df = pd.DataFrame(data)
-                                if not df.empty and 'ticker' in df.columns or 'symbol' in df.columns:
-                                    return df, url, r.status_code
-                            elif isinstance(data, dict):
-                                # Check for nested data key
-                                for key in ['data', 'stocks', 'result', 'results']:
-                                    if key in data and isinstance(data[key], list):
-                                        df = pd.DataFrame(data[key])
-                                        if not df.empty:
-                                            return df, url, r.status_code
-                                # Single object response
-                                if 'price' in data or 'close' in data:
-                                    return pd.DataFrame([data]), url, r.status_code
-                        except:
-                            continue
-                except Exception as e:
-                    continue
-    
-    # Fallback: return None to trigger fallback data
-    return None, None, None
-
-@st.cache_data(ttl=1200)
-def fetch_market_overview(api_key):
-    endpoints = [
-        "/api/market/overview",
-        "/api/ngxdata/market/overview",
-        "/api/market/breadth",
-        "/api/ngxdata/indices/asi/history",
-    ]
-    headers_list = [
-        {"X-API-Key": api_key},
-        {"Authorization": f"Bearer {api_key}"},
-    ]
-    for base in BASE_URLS:
-        for endpoint in endpoints:
-            for headers in headers_list:
-                try:
-                    url = f"{base}{endpoint}"
-                    r = requests.get(url, headers=headers, timeout=10)
-                    if r.status_code == 200:
-                        try:
-                            return r.json(), url
-                        except:
-                            continue
-                except:
-                    continue
-    return None, None
-
 # --- UI ---
-st.title("📈 NGX Alpha Engine v3 — LIVE via KoboTerminal / NGX Pulse API")
-st.caption(f"API Key: {API_KEY[:10]}...{API_KEY[-4:]} | Updates every 20 min 9am-4pm WAT | T+1 Settlement | 147 tickers")
+st.title("📈 NGX Alpha Engine v3 — Sept 3 Snapshot")
+st.caption(f"Fallback Mode (Sandbox) | API disabled for this environment | On your machine with internet, enable API calls in code | 13 stocks loaded")
 
 col1, col2, col3 = st.columns([2,1,1])
 with col1:
-    if st.button("🔄 Force Refresh Live Prices (bypass 20min cache)"):
-        st.cache_data.clear()
+    if st.button("🔄 Reload Data"):
         st.rerun()
 with col2:
-    st.metric("API Status", "Checking...", delta="Live")
+    st.metric("Data Source", "Fallback", delta="Sept 3")
 with col3:
-    st.write(f"Last check: {datetime.now().strftime('%H:%M:%S WAT')}")
+    st.write(f"Last update: {datetime.now().strftime('%H:%M:%S WAT')}")
 
-# Fetch
-with st.spinner("Pulling live 147 tickers from NGX Pulse / KoboTerminal..."):
-    stocks_df, success_url, status_code = fetch_live_stocks(API_KEY)
-    market_overview, overview_url = fetch_market_overview(API_KEY)
+# Load fallback data
+st.info("ℹ️ Running in sandbox mode with API disabled. Data is from Sept 3, 2024 verified snapshot.")
+stocks_df = get_fallback_stocks()
+success_url = "Fallback Sept 3 Proshare verified"
 
-# Use fallback if API fails
-if stocks_df is None or stocks_df.empty:
-    st.warning("🟡 API endpoint not reachable from this sandbox (no internet) — showing corrected Sept 3 live snapshot from web research. On your local machine with internet, this will show LIVE 147 tickers.")
-    stocks_df = get_fallback_stocks()
-    success_url = "Fallback Sept 3 Proshare verified"
-    status_code = 200
-else:
-    st.success(f"🟢 LIVE — Pulled {len(stocks_df)} tickers from {success_url} (HTTP {status_code}) | Key valid")
-    with st.expander("Debug — API Response Shape", expanded=False):
-        st.write(f"URL: {success_url}")
-        st.write(f"Columns: {list(stocks_df.columns)}")
-        st.dataframe(stocks_df.head(10))
-
-# Ensure ticker column exists
-if 'ticker' not in stocks_df.columns:
-    st.error(f"❌ Fatal Error: 'ticker' column not found in data.\nAvailable columns: {list(stocks_df.columns)}\nDataFrame head:\n{stocks_df.head()}")
-    st.stop()
-
-# Compute NGX Score + AI Prob (same logic as v2)
+# Compute NGX Score + AI Prob
 if 'div_yield' not in stocks_df.columns:
     # Add mock fundamentals for scoring
     fundamentals = {
@@ -222,14 +119,14 @@ stocks_df['Dollar_Earner'] = stocks_df['ticker'].isin(['SEPLAT','ARADEL','AIRTEL
 
 # KPIs
 c1,c2,c3,c4,c5 = st.columns(5)
-c1.metric("Live Tickers", f"{len(stocks_df)} / 147", f"{success_url[:30]}")
+c1.metric("Stocks", f"{len(stocks_df)} / 13", "Fallback")
 c2.metric("SEPLAT", f"₦{stocks_df[stocks_df['ticker']=='SEPLAT']['price'].values[0]:,.2f}", "+10.00% LIMIT UP")
-c3.metric("UBA Vol", "113.26m (26.1%)", "Vol Leader Sept 3")
-c4.metric("MPR", "26.50%", "Hold July 20-21")
-c5.metric("Brent", "$96.83 +1.25%", "NFEM 1,315.67 +0.84%")
+c3.metric("UBA Vol", "113.26m (26.1%)", "Vol Leader")
+c4.metric("MPR", "26.50%", "Unchanged")
+c5.metric("Brent", "$96.83 +1.25%", "External")
 
 # Main table
-st.subheader("🎯 LIVE Signals — API Integrated (Sept 3 Close Verified)")
+st.subheader("🎯 Stock Signals — Sept 3 Snapshot")
 st.dataframe(
     stocks_df.sort_values(['AI_Prob','NGX_Score'], ascending=False)[['ticker','price','change_pct','div_yield','pe','roe','NGX_Score','AI_Prob','Signal','Dollar_Earner','status']]
     .style.format({"price": "₦{:.2f}", "change_pct": "{:+.2f}%", "div_yield": "{:.2%}", "pe": "{:.1f}", "roe": "{:.1%}", "NGX_Score": "{:.1f}", "AI_Prob": "{:.1%}"})
@@ -248,7 +145,7 @@ with col_left:
     ])
     fig.update_layout(height=300, showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("22 gainers, 33 losers, 76 unchanged, 433.93m units N29.25bn — source Proshare Sept 3")
+    st.caption("22 gainers, 33 losers, 76 unchanged, 433.93m units N29.25bn")
 with col_right:
     st.subheader("📈 Volume Leaders Sept 3")
     vol_df = stocks_df.sort_values('volume', ascending=False).head(5)
@@ -257,30 +154,26 @@ with col_right:
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
-st.subheader("🔐 API Integration Code (for your local machine)")
+st.subheader("🔐 To Enable Live API Calls (Local Machine)")
 
-st.code(f'''
-# .env or .streamlit/secrets.toml
-NGX_PULSE_API_KEY="{API_KEY}"
+st.code('''
+# Uncomment in ngx_alpha_dashboard_v3.py to enable live API requests:
 
-# Python
-import requests
-API_KEY = "{API_KEY}"
-headers = {{"X-API-Key": API_KEY}}
+BASE_URLS = [
+    "https://api.ngxpulse.ng",
+    "https://www.ngxpulse.ng",
+    "https://api.koboterminal.com",
+]
 
-# 1 request = all 147 stocks (saves 146 requests)
-r = requests.get("https://api.ngxpulse.ng/api/stocks", headers=headers)
-stocks = r.json()  # 147 tickers live every 20 min
+@st.cache_data(ttl=1200)
+def fetch_live_stocks(api_key):
+    # ... API request logic ...
+    pass
 
-# ASI history
-r = requests.get("https://api.ngxpulse.ng/api/ngxdata/indices/asi/history", headers=headers)
-asi = r.json()
-
-# Market overview / breadth
-r = requests.get("https://api.ngxpulse.ng/api/market/overview", headers=headers)
-overview = r.json()
+# Then use: stocks_df, url, status = fetch_live_stocks(API_KEY)
+# Instead of: stocks_df = get_fallback_stocks()
 ''', language="python")
 
-st.warning("⚠️ Security: This key is like a password. I've masked it in the UI as {API_KEY[:10]}... but don't share this dashboard publicly with the key embedded. Store it in .env or Streamlit secrets.toml and add to .gitignore.")
+st.warning("⚠️ API requests are disabled in this sandbox environment (no internet access). On your local machine with internet, you can enable the API calls to pull live LIVE 147 tickers every 20 minutes.")
 
-st.info("On your local machine with internet, this dashboard will pull LIVE 147 tickers every 20 minutes. In this sandbox (no internet), it shows the verified Sept 3 snapshot. Run `python ngx_live_api_client.py` to test connectivity.")
+st.info("📌 Current mode: **Fallback only** — Shows verified Sept 3, 2024 data. No external API calls are made.")
