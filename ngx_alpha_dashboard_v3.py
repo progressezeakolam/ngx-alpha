@@ -22,6 +22,7 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+import numpy as np
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="NGX Alpha LIVE v3 — Kobo API", layout="wide", page_icon="📈")
@@ -173,7 +174,6 @@ else:
     success_url = "Fallback Sept 3 Proshare verified"
 
 # Compute NGX Score + AI Prob (same logic as v2)
-import numpy as np
 if 'div_yield' not in stocks_df.columns:
     # Add mock fundamentals for scoring
     fundamentals = {
@@ -191,6 +191,12 @@ if 'div_yield' not in stocks_df.columns:
         "DANGCEM": {"div_yield": 0.051, "pe": 15.2, "roe": 0.28, "de": 0.45, "earn_growth": 0.18, "adv_90d_m": 380, "mom_126": 0.12, "vol": 0.22},
         "STANBIC": {"div_yield": 0.065, "pe": 7.2, "roe": 0.30, "de": 0.14, "earn_growth": 0.26, "adv_90d_m": 650, "mom_126": 0.40, "vol": 0.30},
     }
+    
+    # Ensure 'ticker' column exists
+    if 'ticker' not in stocks_df.columns:
+        st.error("Error: 'ticker' column not found in stocks_df")
+        st.stop()
+    
     for col in ['div_yield','pe','roe','de','earn_growth','adv_90d_m','mom_126','vol']:
         stocks_df[col] = stocks_df['ticker'].map(lambda t: fundamentals.get(t, {}).get(col, 0.05))
 
